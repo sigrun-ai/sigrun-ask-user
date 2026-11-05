@@ -20,8 +20,7 @@ Add the extension to `extensions[]` in the sigrun settings file and restart:
 
 Until `@sigrun/ask-user` is published, install from a local path pointing at
 the BUILT entry — `"/path/to/sigrun-ask-user/dist/index.js"` in
-`extensions[]` — because the loader rejects a bare directory path
-(`Directory import … is not supported`).
+`extensions[]`.
 
 ## What you get
 
