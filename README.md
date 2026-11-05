@@ -26,7 +26,7 @@ the BUILT entry — `"/path/to/sigrun-ask-user/dist/index.js"` in
 ## What you get
 
 - **The `ask_user_question` tool**: one to four questions per call, each
-  with two to four options, an optional short header chip, and multi-select
+  with two to four options, a short header chip, and multi-select
   where it fits. A label ending in ` (Recommended)` renders with a
   recommended marker. The card always adds a free-text "Type something"
   row, so `Other` and `Type something.` are reserved labels the model

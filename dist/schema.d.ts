@@ -39,6 +39,8 @@ export type AskQuestion = Static<typeof AskQuestionSchema>;
 export type AskParams = Static<typeof AskParamsSchema>;
 /**
  * Models occasionally send the array as a JSON string; normalize that to
- * parsed form. Anything else passes through unchanged. Pure.
+ * parsed form. Anything else passes through unchanged (null/undefined throw
+ * here — the tool's own argument validation rejects them upstream as
+ * invalid_arguments). Pure.
  */
 export declare function prepareAskArguments(args: unknown): AskParams;

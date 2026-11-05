@@ -55,7 +55,7 @@ check(
 );
 check(Array.isArray(manifest.files) && manifest.files.length > 0, "package.json: files whitelist is absent/empty");
 /** MIT requires the copyright notice to travel with the copies: this
- * repo ships code ported from rpiv-todo, so the notices file must be in
+ * repo ships code ported from rpiv-ask-user-question, so the notices file must be in
  * the published tarball, not just the repo. */
 check(
 	Array.isArray(manifest.files) && manifest.files.includes("THIRD_PARTY_NOTICES.md"),

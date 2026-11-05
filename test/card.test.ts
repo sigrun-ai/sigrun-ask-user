@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { Tree } from "@sigrun/shared/blocks";
+import { validateTree, type Tree } from "@sigrun/sigrun/blocks";
 import { buildCard } from "../src/card.js";
 import type { AskParams } from "../src/schema.js";
 
@@ -31,6 +31,7 @@ describe("buildCard", () => {
 			v: 1,
 			root: {
 				type: "form",
+				id: "ask",
 				bind: "/values",
 				mode: "submit",
 				submitLabel: "Submit answers",
@@ -130,5 +131,34 @@ describe("buildCard", () => {
 			description: "Default queue",
 			preview: "**Main** queue detail",
 		});
+	});
+
+	it("passes core's tree validation for the interaction placement", () => {
+		// The guard for the root-form id rule: core's seedInteraction runs
+		// this same validateTree and rejects a form without an id.
+		const params: AskParams = {
+			questions: [
+				{
+					question: "Which database should this service use?",
+					header: "Database",
+					options: [
+						{ label: "SQLite", description: "Embedded, zero-ops file store" },
+						{ label: "Postgres", description: "Relational store with transactions" },
+					],
+				},
+				{
+					question: "Which caches belong in front of it?",
+					header: "Caching",
+					multiSelect: true,
+					options: [
+						{ label: "Redis", description: "In-memory key-value store" },
+						{ label: "In-process", description: "No extra service" },
+					],
+				},
+			],
+		};
+
+		const result = validateTree(buildCard(params), { placement: "interaction" });
+		expect(result.ok).toBe(true);
 	});
 });

@@ -41,6 +41,7 @@ export function buildCard(params) {
         v: 1,
         root: {
             type: "form",
+            id: "ask",
             bind: "/values",
             mode: "submit",
             submitLabel: "Submit answers",

@@ -86,6 +86,26 @@ describe("validateAsk", () => {
 		expect(validateAsk(params([dup]))).toBe("question 1: option labels must be unique");
 	});
 
+	it("compares labels without the recommended suffix", () => {
+		const dup = question({
+			options: [
+				{ label: "Postgres", description: "A" },
+				{ label: "Postgres (Recommended)", description: "B" },
+			],
+		});
+		expect(validateAsk(params([dup]))).toBe("question 1: option labels must be unique");
+
+		const reserved = question({
+			options: [
+				{ label: "Postgres", description: "A" },
+				{ label: "Other (Recommended)", description: "B" },
+			],
+		});
+		expect(validateAsk(params([reserved]))).toBe(
+			'question 1: "Other" is reserved — the free-text row is added automatically',
+		);
+	});
+
 	it("numbers the failing question", () => {
 		const dup = question({
 			header: "Cache",
