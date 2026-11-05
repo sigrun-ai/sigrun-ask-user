@@ -68,6 +68,18 @@ describe("Waiters", () => {
 		await expect(pending).rejects.toThrow("run aborted");
 	});
 
+	it("an aborted wait drops its map entry: a later settle does not throw", async () => {
+		const waiters = new Waiters();
+		const controller = new AbortController();
+		const context: Context = withAbortSignal(controller.signal, BACKGROUND_CONTEXT);
+		const pending = waiters.wait("call-1", context);
+		controller.abort(new Error("run aborted"));
+		await expect(pending).rejects.toThrow("run aborted");
+		// The aborted waiter's entry is gone: a late settle for the same
+		// callId is a dropped event, not a resolve of nothing.
+		expect(() => waiters.settle(settledEvent())).not.toThrow();
+	});
+
 	it("a settle for another kind is ignored", async () => {
 		const waiters = new Waiters();
 		let resolved: Settled | undefined;

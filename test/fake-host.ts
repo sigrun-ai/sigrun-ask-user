@@ -11,7 +11,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ConversationId } from "@earendil-works/pi-durable";
-import type { InteractionRecord } from "@sigrun/shared/interactions";
+import type { InteractionAnswer, InteractionRecord } from "@sigrun/shared/interactions";
 import type { SigrunHost } from "@sigrun/sigrun/extension";
 
 export interface FakeCall {
@@ -31,10 +31,19 @@ export interface FakeHostOptions {
 	readonly snapshotOverride?: (seeded: InteractionRecord) => InteractionRecord | undefined;
 	/** Make `settleInteraction` reject (the closing-session path). */
 	readonly settleRejects?: boolean;
+	/**
+	 * The first snapshot read of the seeded record reports PENDING and
+	 * flips the record to answered — the deterministic shape of the
+	 * abort race: the answer commits between the tool's post-seed
+	 * snapshot and the abort's re-read.
+	 */
+	readonly answerAfterFirstSnapshot?: InteractionAnswer;
 }
 
 export interface FakeHost extends SigrunHost {
 	readonly calls: readonly FakeCall[];
+	/** Drive a seeded record to answered (the abort-race test). */
+	markAnswered(callId: string, answer: InteractionAnswer): void;
 	cleanup(): Promise<void>;
 }
 
@@ -114,13 +123,23 @@ export async function createFakeHost(opts: FakeHostOptions = {}): Promise<FakeHo
 			record("snapshotInteraction", callId);
 			const stored = records.get(callId);
 			if (stored === undefined) return undefined;
-			return opts.snapshotOverride?.(stored) ?? stored;
+			const overridden = opts.snapshotOverride?.(stored) ?? stored;
+			if (opts.answerAfterFirstSnapshot !== undefined && stored.status === "pending") {
+				records.set(callId, {
+					...stored,
+					status: "answered",
+					answer: opts.answerAfterFirstSnapshot,
+					answeredBy: "human",
+				});
+			}
+			return overridden;
 		},
 		setAmbient: notUsed(),
 		clearAmbient: notUsed(),
 		conversations,
 		jobs: {
 			get: notUsed(),
+			activeRun: notUsed(),
 			isJobRun: async () => {
 				record("jobs.isJobRun");
 				return opts.isJobRun ?? false;
@@ -138,9 +157,14 @@ export async function createFakeHost(opts: FakeHostOptions = {}): Promise<FakeHo
 		access: { accessOf: notUsed() },
 		identity: { actingUser: notUsed() },
 		surfaces: { changed: notUsed() },
-		models: { list: notUsed() },
+		models: { list: notUsed(), complete: notUsed() },
 		commands: { list: notUsed(), run: notUsed() },
 		curation: new Proxy({} as SigrunHost["curation"], {
+			get: () => {
+				throw new Error("not used in ask-user tests");
+			},
+		}),
+		decisions: new Proxy({} as SigrunHost["decisions"], {
 			get: () => {
 				throw new Error("not used in ask-user tests");
 			},
@@ -152,6 +176,11 @@ export async function createFakeHost(opts: FakeHostOptions = {}): Promise<FakeHo
 	return {
 		...host,
 		calls,
+		markAnswered: (callId, answer) => {
+			const existing = records.get(callId);
+			if (existing === undefined) throw new Error(`no seeded record ${callId}`);
+			records.set(callId, { ...existing, status: "answered", answer, answeredBy: "human" });
+		},
 		cleanup: async () => {
 			await rm(root, { recursive: true, force: true });
 		},

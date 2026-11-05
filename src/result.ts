@@ -65,6 +65,9 @@ export function formatResult(
 	settled: Settled,
 ): { output: string; details: AskDetails; isError?: true } {
 	if (settled.status === "skipped") {
+		// Decision: a skip without declinedVia reads as the button sentence.
+		// The field is only absent for declines older than the field, and the
+		// chat-reply copy would claim a message follows when none does.
 		return {
 			output: settled.declinedVia === "message" ? DECLINED_MESSAGE_TEXT : DECLINED_BUTTON_TEXT,
 			details: { status: "skipped", answers: [], ...(settled.declinedVia !== undefined ? { declinedVia: settled.declinedVia } : {}) },

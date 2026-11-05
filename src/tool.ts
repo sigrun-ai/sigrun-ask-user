@@ -30,11 +30,30 @@
 import { withoutAbortSignal, type Context } from "@earendil-works/chord/context";
 import { defineTool, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { SigrunHost } from "@sigrun/sigrun/extension";
+import type { InteractionRecord } from "@sigrun/shared/interactions";
 import { ASK_KIND, buildCard } from "./card.js";
 import { formatResult } from "./result.js";
 import { AskParamsSchema, prepareAskArguments, type AskParams } from "./schema.js";
 import { validateAsk } from "./validate.js";
 import { Waiters, type Settled } from "./waiters.js";
+
+/** A stored record folded into the waiter's `Settled` shape. */
+function settledOfRecord(record: InteractionRecord): Settled {
+	switch (record.status) {
+		case "answered":
+			return { status: "answered", values: { ...(record.answer?.values ?? {}) } };
+		case "skipped":
+			return {
+				status: "skipped",
+				...(record.declinedVia !== undefined ? { declinedVia: record.declinedVia } : {}),
+			};
+		case "expired":
+		case "cancelled":
+			return { status: record.status };
+		default:
+			throw new Error("pending is not settled");
+	}
+}
 
 /** The job-run refusal (verbatim; spec §7.5). */
 const JOB_RUN_TEXT =
@@ -64,14 +83,20 @@ export function createAskTool(deps: { host: SigrunHost; waiters: Waiters }): Too
 		prepareArguments: prepareAskArguments,
 		execute: async (args: AskParams, api, context) => {
 			/**
-			 * The abort path shared by the snapshot read and the wait. A waiter
-			 * that already resolved — the human's answer or decline won the race
-			 * — stands; a clean shutdown leaves the record PENDING (the rerun
-			 * after restart re-seeds it); any other abort settles the card
-			 * `cancelled`, swallowing the settle commit's own failure so a
-			 * closing session cannot mask the original abort.
+			 * The abort path shared by the snapshot read and the wait. The
+			 * record is re-read FIRST: a non-pending record means the human's
+			 * answer or decline won the race and stands. Only a still-pending
+			 * record is settled `cancelled` (when this abort is not a clean
+			 * shutdown), so our own settle can never masquerade as the race
+			 * winner — and the ORIGINAL abort error is what rethrows.
 			 */
-			const onAbort = async (error: unknown): Promise<unknown> => {
+			const onAbort = async (error: unknown): Promise<{ error: unknown } | { settled: Settled }> => {
+				const before = await host
+					.snapshotInteraction(api.conversationId, api.callId, withoutAbortSignal(context))
+					.catch(() => undefined);
+				if (before !== undefined && before.status !== "pending") {
+					return { settled: settledOfRecord(before) };
+				}
 				if (!waiters.shuttingDown) {
 					try {
 						await host.settleInteraction(
@@ -84,13 +109,7 @@ export function createAskTool(deps: { host: SigrunHost; waiters: Waiters }): Too
 						console.warn("ask_user_question: cancelling the seeded card failed", settleError);
 					}
 				}
-				const record = await host
-					.snapshotInteraction(api.conversationId, api.callId, withoutAbortSignal(context))
-					.catch(() => undefined);
-				if (record !== undefined && record.status !== "pending") {
-					return null; // settled already: fall through to formatResult
-				}
-				return error;
+				return { error };
 			};
 
 			const invalid = validateAsk(args);
@@ -101,6 +120,10 @@ export function createAskTool(deps: { host: SigrunHost; waiters: Waiters }): Too
 			}
 
 			const pending = waiters.wait(api.callId, context);
+			// Mark the waiter observed NOW: a throw before the await below (a
+			// rejecting seed, an aborted snapshot) would otherwise leave its
+			// rejection unhandled at shutdown.
+			void pending.catch(() => undefined);
 			await host.seedInteraction(
 				api.conversationId,
 				{
@@ -110,38 +133,39 @@ export function createAskTool(deps: { host: SigrunHost; waiters: Waiters }): Too
 					createdAt: Date.now(),
 					declinable: true,
 					// SAFETY: AskParams is Static<AskParamsSchema> — plain JSON by
-				// construction (validated against the schema by the harness), but
-				// the typebox interface carries no index signature.
-				details: args as unknown as Record<string, never>,
+					// construction (validated against the schema by the harness), but
+					// the typebox interface carries no index signature.
+					details: args as unknown as Record<string, import("@earendil-works/chord").JsonValue>,
 					body: buildCard(args),
 				},
 				context,
 			);
 
 			let settled: Settled;
-			let snap: Awaited<ReturnType<SigrunHost["snapshotInteraction"]>>;
+			let terminal = false;
+			let snap: Awaited<ReturnType<SigrunHost["snapshotInteraction"]>> | undefined;
 			try {
 				snap = await host.snapshotInteraction(api.conversationId, api.callId, context);
 			} catch (error) {
-				throw await onAbort(error);
+				const outcome = await onAbort(error);
+				if ("error" in outcome) throw outcome.error;
+				settled = outcome.settled;
+				terminal = true;
 			}
-			if (snap !== undefined && snap.status !== "pending") {
-				settled =
-					snap.status === "answered"
-						? { status: "answered", values: { ...(snap.answer?.values ?? {}) } }
-						: snap.status === "skipped"
-							? {
-									status: "skipped",
-									...(snap.declinedVia !== undefined ? { declinedVia: snap.declinedVia } : {}),
-								}
-							: { status: snap.status };
-			} else {
+			if (!terminal && snap !== undefined && snap.status !== "pending") {
+				settled = settledOfRecord(snap);
+				terminal = true;
+			}
+			if (!terminal) {
 				try {
 					settled = await pending;
 				} catch (error) {
-					throw await onAbort(error);
+					const outcome = await onAbort(error);
+					if ("error" in outcome) throw outcome.error;
+					settled = outcome.settled;
 				}
 			}
+			if (settled! === undefined) throw new Error("ask_user_question: settled without a settle");
 
 			const result = formatResult(args, settled);
 			return {

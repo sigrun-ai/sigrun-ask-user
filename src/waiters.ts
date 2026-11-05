@@ -59,10 +59,19 @@ export class Waiters {
 	 * suspender).
 	 */
 	wait(callId: string, context: Context): Promise<Settled> {
+		let resolveFn: (settled: Settled) => void = () => undefined;
 		const promise = new Promise<Settled>((resolve) => {
-			this.#waiters.set(callId, resolve);
+			resolveFn = resolve;
 		});
-		return awaitWithContext(promise, context);
+		this.#waiters.set(callId, resolveFn);
+		// Drop the map entry when the wait ends for ANY reason — an aborted
+		// wait never sees a settle, and a stale resolver would swallow a
+		// later call's event under a reused callId. Only OUR entry is
+		// removed: settle() deletes on the resolve path, and a re-registered
+		// waiter for the same callId owns its own entry.
+		return awaitWithContext(promise, context).finally(() => {
+			if (this.#waiters.get(callId) === resolveFn) this.#waiters.delete(callId);
+		});
 	}
 
 	/** The `interactionSettled` handler: resolves the matching waiter, drops everything else. */

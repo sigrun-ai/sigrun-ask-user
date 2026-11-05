@@ -124,25 +124,28 @@ describe("Review Focus 4: an already-settled snapshot resolves without any settl
 });
 
 describe("Review Focus 1: the abort path", () => {
-	function abortedContext(): { context: Context; abort: () => void } {
+	function abortedContext(): { context: Context; abort: () => void; reason: Error } {
 		const controller = new AbortController();
+		const reason = new Error("run aborted");
 		return {
 			context: withAbortSignal(controller.signal, BACKGROUND_CONTEXT),
-			abort: () => controller.abort(new Error("run aborted")),
+			abort: () => controller.abort(reason),
+			reason,
 		};
 	}
 
 	it("shuttingDown: no settleInteraction, the abort propagates", async () => {
 		const { host, waiters, tool } = await setup();
 		try {
-			const { context, abort } = abortedContext();
+			const { context, abort, reason } = abortedContext();
 			const pending = tool.execute(PARAMS, apiFor(), context);
 			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
 			waiters.shuttingDown = true;
 			abort();
-			await expect(pending).rejects.toThrow("run aborted");
+			// Identity, not message text: a null rejection passes toThrow(string).
+			await expect(pending).rejects.toBe(reason);
 			expect(host.calls.some((c) => c.method === "settleInteraction")).toBe(false);
 		} finally {
 			await host.cleanup();
@@ -152,13 +155,13 @@ describe("Review Focus 1: the abort path", () => {
 	it("without the flag: exactly one settleInteraction(..., \"cancelled\"), then the abort propagates", async () => {
 		const { host, tool } = await setup();
 		try {
-			const { context, abort } = abortedContext();
+			const { context, abort, reason } = abortedContext();
 			const pending = tool.execute(PARAMS, apiFor(), context);
 			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
 			abort();
-			await expect(pending).rejects.toThrow("run aborted");
+			await expect(pending).rejects.toBe(reason);
 			const settles = host.calls.filter((c) => c.method === "settleInteraction");
 			expect(settles).toHaveLength(1);
 			expect(settles[0].args).toEqual(["call-1", "cancelled"]);
@@ -170,15 +173,32 @@ describe("Review Focus 1: the abort path", () => {
 	it("a rejecting settle still propagates the original abort, with no unhandled rejection", async () => {
 		const { host, tool } = await setup({ settleRejects: true });
 		try {
+			const { context, abort, reason } = abortedContext();
+			const pending = tool.execute(PARAMS, apiFor(), context);
+			await Promise.resolve();
+			await Promise.resolve();
+			await Promise.resolve();
+			abort();
+			await expect(pending).rejects.toBe(reason);
+			const settles = host.calls.filter((c) => c.method === "settleInteraction");
+			expect(settles).toHaveLength(1);
+		} finally {
+			await host.cleanup();
+		}
+	});
+
+	it("an answer committed before the abort wins the race and stands", async () => {
+		const { host, tool } = await setup({ answerAfterFirstSnapshot: { values: { q1: "o2" } } });
+		try {
 			const { context, abort } = abortedContext();
 			const pending = tool.execute(PARAMS, apiFor(), context);
 			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
 			abort();
-			await expect(pending).rejects.toThrow("run aborted");
-			const settles = host.calls.filter((c) => c.method === "settleInteraction");
-			expect(settles).toHaveLength(1);
+			const result = await pending;
+			expect(textOf(result)).toBe("Stack: Beta");
+			expect(host.calls.some((c) => c.method === "settleInteraction")).toBe(false);
 		} finally {
 			await host.cleanup();
 		}
@@ -227,10 +247,12 @@ describe("validation failures seed nothing", () => {
 });
 
 describe("Review Focus 5: malformed inputs fail before any seed", () => {
-	const cases: { name: string; input: unknown }[] = [
+	const cases: { name: string; input: unknown; /** String the schema error or validateAsk message must contain. */ expect: string }[] = [
 		{
 			name: "five questions",
 			input: { questions: Array.from({ length: 5 }, () => PARAMS.questions[0]) },
+			// Schema: maxItems 4 — plus duplicate headers in validateAsk.
+			expect: "4",
 		},
 		{
 			name: "one option",
@@ -239,6 +261,8 @@ describe("Review Focus 5: malformed inputs fail before any seed", () => {
 					{ ...PARAMS.questions[0], options: [{ label: "Only", description: "One" }] },
 				],
 			},
+			// Schema: minItems 2.
+			expect: "2",
 		},
 		{
 			name: "a reserved label",
@@ -253,6 +277,7 @@ describe("Review Focus 5: malformed inputs fail before any seed", () => {
 					},
 				],
 			},
+			expect: "reserved",
 		},
 		{
 			name: "preview on multi-select",
@@ -268,15 +293,18 @@ describe("Review Focus 5: malformed inputs fail before any seed", () => {
 					},
 				],
 			},
+			expect: "preview",
 		},
 		{
 			name: "a 17-char header",
 			input: { questions: [{ ...PARAMS.questions[0], header: "x".repeat(17) }] },
+			// Schema: maxLength 16.
+			expect: "16",
 		},
 	];
 
-	for (const { name, input } of cases) {
-		it(`${name}: an error, nothing seeded`, async () => {
+	for (const { name, input, expect: keyword } of cases) {
+		it(`${name}: an error naming the failing rule, nothing seeded`, async () => {
 			const { host, tool } = await setup();
 			try {
 				// The pipeline the harness runs: repair, schema check, validate.
@@ -287,9 +315,14 @@ describe("Review Focus 5: malformed inputs fail before any seed", () => {
 					const result = await tool.execute(prepared, apiFor(), BACKGROUND_CONTEXT);
 					expect(result.isError).toBe(true);
 					expect(textOf(result)).toBe(invalid);
+					expect(textOf(result)).toContain(keyword);
 				} else {
-					// Schema-level rejections fail the call before execute ever runs.
-					expect(Value.Check(AskParamsSchema, prepared)).toBe(false);
+					// Schema-level rejections fail the call before execute ever runs;
+					// the harness's invalid_arguments error carries the failing rule.
+					const errors = [...Value.Errors(AskParamsSchema, prepared)];
+					expect(errors.length).toBeGreaterThan(0);
+					const text = errors.map((e) => `${e.keyword} ${e.instancePath} ${e.message}`).join("\n");
+					expect(text).toContain(keyword);
 				}
 				expect(host.calls.some((c) => c.method === "seedInteraction")).toBe(false);
 			} finally {
