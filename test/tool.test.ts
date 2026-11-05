@@ -91,7 +91,7 @@ describe("the happy path", () => {
 				callId: "call-1",
 				kind: ASK_KIND,
 				status: "answered",
-				answer: { values: { q1: "o2" } },
+				answer: { q1: "o2" },
 			});
 			const result = await pending;
 			expect(result.isError).toBeUndefined();
@@ -117,7 +117,7 @@ describe("a rejecting seed leaves no waiter behind", () => {
 				callId: "call-1",
 				kind: ASK_KIND,
 				status: "answered",
-				answer: { values: { q1: "o1" } },
+				answer: { q1: "o1" },
 			});
 			// A fresh wait under the callId resolves normally (the registry
 			// was cleaned; no stale resolver swallowed the event).
@@ -127,7 +127,7 @@ describe("a rejecting seed leaves no waiter behind", () => {
 				callId: "call-1",
 				kind: ASK_KIND,
 				status: "answered",
-				answer: { values: { q1: "o2" } },
+				answer: { q1: "o2" },
 			});
 			expect(await again).toEqual({ status: "answered", values: { q1: "o2" } });
 		} finally {
@@ -399,7 +399,7 @@ describe("the real harness round trip", () => {
 					callId: "call-1",
 					kind: ASK_KIND,
 					status: "answered",
-					answer: { values: { q1: "o2" } },
+					answer: { q1: "o2" },
 				});
 
 				expect((await submission.wait(BACKGROUND_CONTEXT)).status).toBe("done");

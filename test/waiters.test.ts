@@ -24,7 +24,7 @@ function settledEvent(
 		callId: "call-1",
 		kind: "ask.questions",
 		status: "answered",
-		answer: { values: { q1: "o2" } },
+		answer: { q1: "o2" },
 		...overrides,
 	};
 }

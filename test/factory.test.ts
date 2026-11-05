@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { ConversationId, ToolExecutionApi } from "@earendil-works/pi-durable";
+import type { ConversationId, ToolExecutionApi, ToolExecutionResult } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import type { ExtensionLifecyclePayload } from "@sigrun/sigrun/extension";
 import { ASK_KIND } from "../src/card.js";
@@ -31,6 +31,11 @@ const PARAMS = {
 		},
 	],
 };
+
+function textOf(result: ToolExecutionResult): string {
+	if (result.output === undefined) throw new Error("the tool returned no output text");
+	return result.output.map((part) => (part.type === "text" ? part.text : "")).join("");
+}
 
 describe("createAskUser", () => {
 	it("declares exactly one parameter (the loader passes the host only when factory.length > 0)", () => {
@@ -118,10 +123,15 @@ describe("createAskUser", () => {
 				callId: "call-settle",
 				kind: ASK_KIND,
 				status: "answered",
-				answer: { q1: ["o1"] },
+				// The REAL event shape: the plain values map (core event-bus
+				// pushes `record.answer.values`), NOT `{ values: {...} }`.
+				answer: { q1: "o1" },
 			});
 			const settled = await executing;
 			expect(settled.isError).toBeUndefined();
+			// The rendered answer proves the values survived the fold: a
+			// wrong event shape would render "Pick: " with no selection.
+			expect(textOf(settled)).toBe("Pick: Alpha");
 		} finally {
 			await host.cleanup();
 		}

@@ -33,7 +33,13 @@ type SettleEvent = ExtensionLifecyclePayload["interactionSettled"];
 export function settledOf(event: SettleEvent): Settled {
 	switch (event.status) {
 		case "answered":
-			return { status: "answered", values: { ...(event.answer?.values ?? {}) } };
+			// The event's `answer` is the record's PLAIN values map (core
+			// event-bus pushes `record.answer.values`); the values are
+			// render-safe card output, hence JsonValue-shaped.
+			return {
+				status: "answered",
+				values: { ...((event.answer ?? {}) as Record<string, JsonValue>) },
+			};
 		case "skipped":
 			return {
 				status: "skipped",

@@ -70,9 +70,10 @@ check(typeof manifest.homepage === "string", "package.json: homepage absent");
 
 /** dist/ is committed build output: the main entry must exist on disk
  * or git-source installs load nothing. */
+const distEntry = manifest.main ?? "dist/index.js";
 check(
-	existsSync(join(repoDir, manifest.main ?? "dist/index.js")),
-	`dist entry ${JSON.stringify(manifest.main)} is missing — run npm run build and commit dist/`,
+	existsSync(join(repoDir, distEntry)),
+	`dist entry ${JSON.stringify(distEntry)} is missing — run npm run build and commit dist/`,
 );
 
 /** Every host module a sigrun extension/provider imports must be a peer.
