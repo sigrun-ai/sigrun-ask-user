@@ -18,3 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   full question text, the ` (Recommended)` suffix mapping to
   `recommended: true`, and a free-text "Type something" row on every
   choice.
+- The `ask_user_question` tool (model-only, `replay: "safe"`): validate,
+  refuse in scheduled job runs, register the waiter, seed the card
+  idempotently per call id, one snapshot read, then wait for the human.
+  Declines come back as results, not errors; a clean shutdown leaves the
+  card pending for the post-restart rerun; any other abort settles it
+  `cancelled` and rethrows the original abort. No timer ever answers.
+- `Waiters`: the callId-keyed registry joining `interactionSettled`
+  events to in-flight waits.
+- `formatResult`: the settled outcome folded into the tool output and
+  `details`.
+- The extension factory: `interactionKinds: ["ask.questions"]`,
+  `interactiveTools: ["ask_user_question"]`, the `interactionSettled`
+  and `harnessShutdown` lifecycle handlers.
+- The prompt section: the asking discipline, rendered only when the
+  run's agent carries `ask_user_question`.

@@ -31,6 +31,8 @@ export interface FakeHostOptions {
 	readonly snapshotOverride?: (seeded: InteractionRecord) => InteractionRecord | undefined;
 	/** Make `settleInteraction` reject (the closing-session path). */
 	readonly settleRejects?: boolean;
+	/** Make `seedInteraction` reject (the waiter-leak guard). */
+	readonly seedRejects?: boolean;
 	/**
 	 * The first snapshot read of the seeded record reports PENDING and
 	 * flips the record to answered — the deterministic shape of the
@@ -42,8 +44,6 @@ export interface FakeHostOptions {
 
 export interface FakeHost extends SigrunHost {
 	readonly calls: readonly FakeCall[];
-	/** Drive a seeded record to answered (the abort-race test). */
-	markAnswered(callId: string, answer: InteractionAnswer): void;
 	cleanup(): Promise<void>;
 }
 
@@ -105,6 +105,7 @@ export async function createFakeHost(opts: FakeHostOptions = {}): Promise<FakeHo
 		services: { connect: notUsed() },
 		seedInteraction: async (_conversationId, interaction) => {
 			record("seedInteraction", interaction);
+			if (opts.seedRejects === true) throw new Error("store unavailable");
 			const existing = records.get(interaction.callId);
 			if (existing !== undefined && terminal(existing.status)) return;
 			records.set(interaction.callId, interaction);
@@ -176,11 +177,6 @@ export async function createFakeHost(opts: FakeHostOptions = {}): Promise<FakeHo
 	return {
 		...host,
 		calls,
-		markAnswered: (callId, answer) => {
-			const existing = records.get(callId);
-			if (existing === undefined) throw new Error(`no seeded record ${callId}`);
-			records.set(callId, { ...existing, status: "answered", answer, answeredBy: "human" });
-		},
 		cleanup: async () => {
 			await rm(root, { recursive: true, force: true });
 		},

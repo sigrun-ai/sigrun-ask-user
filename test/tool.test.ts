@@ -103,6 +103,39 @@ describe("the happy path", () => {
 	});
 });
 
+describe("a rejecting seed leaves no waiter behind", () => {
+	it("execute rejects with the seed error and the next settle under the callId is dropped", async () => {
+		const { host, waiters, tool } = await setup({ seedRejects: true });
+		try {
+			await expect(tool.execute(PARAMS, apiFor(), BACKGROUND_CONTEXT)).rejects.toThrow(
+				"store unavailable",
+			);
+			// The waiter registered before the seed must be gone: settling
+			// under the same callId is a no-op, not a resolve into the void.
+			waiters.settle({
+				conversationId: CID,
+				callId: "call-1",
+				kind: ASK_KIND,
+				status: "answered",
+				answer: { values: { q1: "o1" } },
+			});
+			// A fresh wait under the callId resolves normally (the registry
+			// was cleaned; no stale resolver swallowed the event).
+			const again = waiters.wait("call-1", BACKGROUND_CONTEXT);
+			waiters.settle({
+				conversationId: CID,
+				callId: "call-1",
+				kind: ASK_KIND,
+				status: "answered",
+				answer: { values: { q1: "o2" } },
+			});
+			expect(await again).toEqual({ status: "answered", values: { q1: "o2" } });
+		} finally {
+			await host.cleanup();
+		}
+	});
+});
+
 describe("Review Focus 4: an already-settled snapshot resolves without any settle", () => {
 	it("returns the answer from the record and never settles", async () => {
 		const { host, tool } = await setup({
@@ -247,12 +280,12 @@ describe("validation failures seed nothing", () => {
 });
 
 describe("Review Focus 5: malformed inputs fail before any seed", () => {
-	const cases: { name: string; input: unknown; /** String the schema error or validateAsk message must contain. */ expect: string }[] = [
+	const cases: { name: string; input: unknown; /** Schema keyword or validateAsk substring the error must carry. */ expect: string }[] = [
 		{
 			name: "five questions",
 			input: { questions: Array.from({ length: 5 }, () => PARAMS.questions[0]) },
 			// Schema: maxItems 4 — plus duplicate headers in validateAsk.
-			expect: "4",
+			expect: "maxItems",
 		},
 		{
 			name: "one option",
@@ -262,7 +295,7 @@ describe("Review Focus 5: malformed inputs fail before any seed", () => {
 				],
 			},
 			// Schema: minItems 2.
-			expect: "2",
+			expect: "minItems",
 		},
 		{
 			name: "a reserved label",
@@ -299,7 +332,7 @@ describe("Review Focus 5: malformed inputs fail before any seed", () => {
 			name: "a 17-char header",
 			input: { questions: [{ ...PARAMS.questions[0], header: "x".repeat(17) }] },
 			// Schema: maxLength 16.
-			expect: "16",
+			expect: "maxLength",
 		},
 	];
 
@@ -321,8 +354,9 @@ describe("Review Focus 5: malformed inputs fail before any seed", () => {
 					// the harness's invalid_arguments error carries the failing rule.
 					const errors = [...Value.Errors(AskParamsSchema, prepared)];
 					expect(errors.length).toBeGreaterThan(0);
-					const text = errors.map((e) => `${e.keyword} ${e.instancePath} ${e.message}`).join("\n");
-					expect(text).toContain(keyword);
+					// Numeric limits pin the failing RULE (maxItems/minItems/maxLength),
+					// not a bare number that any message could carry.
+					expect(errors.some((e) => e.keyword === keyword)).toBe(true);
 				}
 				expect(host.calls.some((c) => c.method === "seedInteraction")).toBe(false);
 			} finally {

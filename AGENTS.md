@@ -32,6 +32,27 @@ taking the `SigrunHost` and returning a `SigrunExtensionResult` (types from
   `allowOther: {label: "Type something"}`. No note fields — the TUI
   stepper only takes input in a step's first field.
 - `src/types.ts` — the shared type/constant re-exports.
+- `src/tool.ts` — the `ask_user_question` tool: validate, `jobs.isJobRun`
+  check, waiter registration, idempotent seed, one snapshot read, then
+  the wait. The abort path distinguishes a clean shutdown (record stays
+  pending for the post-restart rerun) from a real cancel (record settles
+  `cancelled`); the original abort always rethrows. Model-only,
+  `replay: "safe"`.
+- `src/waiters.ts` — `Waiters`: the callId-keyed promise registry
+  joining `interactionSettled` events to the tool's waits, plus the
+  `shuttingDown` flag; `discard` drops a waiter whose execute body threw
+  before awaiting (a rejecting seed). NO timers anywhere.
+- `src/result.ts` — `formatResult`: the settled outcome folded into the
+  tool's text output (`Header: Label` lines, free-text replies,
+  declined/cancelled phrasings) plus the renderable `details`.
+- `src/section.ts` — the static prompt section (the asking discipline,
+  verbatim; renders only when the run's agent carries
+  `ask_user_question`).
+- `src/index.ts` — the default-export factory: ONE `Waiters` shared by
+  the tool and the `interactionSettled` handler, plus `harnessShutdown`
+  flipping the flag.
+- `test/fake-host.ts` — the in-memory `SigrunHost` (unit tests never
+  boot core); `test/harness.ts` — a real pi-durable `Harness` helper.
 - `dist/` — **committed build output** (git-source installs load
   `dist/index.js` with no build step). Rebuild with `npm run build` and
   commit whenever `src/` moves; a stale dist is ship-blocking.
@@ -47,6 +68,10 @@ npm run build       # tsc -> dist/ (commit the result)
 
 ## Conventions
 
+- The extension's seams: `interactionKinds: ["ask.questions"]`,
+  `interactiveTools: ["ask_user_question"]` (core withholds the tool from
+  job runs and curator agents), `interactionSettled` resolving waits,
+  `harnessShutdown` arming the clean-restart abort path.
 - **Commit dist**: tracked by design. If `git status` shows `dist/` changes
   after a build, those belong in the same commit as the source change.
 - **Verification before completion**: `npm test` + `npm run typecheck` +

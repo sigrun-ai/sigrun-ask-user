@@ -74,6 +74,18 @@ export class Waiters {
 		});
 	}
 
+	/**
+	 * Delete the waiter for `callId` outright. Called from the tool's
+	 * execute-body finally so a throw BEFORE the await (a rejecting seed)
+	 * cannot leak the entry. No identity guard is needed here: a callId
+	 * belongs to exactly one in-flight execute, and the only
+	 * re-registration under the same callId is the post-restart rerun,
+	 * which registers after this execute has finished.
+	 */
+	discard(callId: string): void {
+		this.#waiters.delete(callId);
+	}
+
 	/** The `interactionSettled` handler: resolves the matching waiter, drops everything else. */
 	settle(event: SettleEvent): void {
 		if (event.kind !== ASK_KIND) return;

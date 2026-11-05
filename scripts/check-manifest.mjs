@@ -12,7 +12,7 @@
  * (defaults to this repo's manifest name when --expect-name is absent).
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,6 +67,13 @@ check(
 );
 check(typeof manifest.bugs?.url === "string", "package.json: bugs.url absent");
 check(typeof manifest.homepage === "string", "package.json: homepage absent");
+
+/** dist/ is committed build output: the main entry must exist on disk
+ * or git-source installs load nothing. */
+check(
+	existsSync(join(repoDir, manifest.main ?? "dist/index.js")),
+	`dist entry ${JSON.stringify(manifest.main)} is missing — run npm run build and commit dist/`,
+);
 
 /** Every host module a sigrun extension/provider imports must be a peer.
  * The @earendil-works host modules ship 1.3.0 with sigrun 0.1.0; peers
