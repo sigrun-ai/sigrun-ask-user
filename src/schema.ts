@@ -7,7 +7,7 @@
  * `validate.ts`.
  */
 
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 
 export const AskOptionSchema = Type.Object({
 	label: Type.String({ maxLength: 60, description: "Short option label" }),

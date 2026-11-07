@@ -6,7 +6,7 @@
  * carry over (spec §7.1); rules a schema cannot express live in
  * `validate.ts`.
  */
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 export const AskOptionSchema = Type.Object({
     label: Type.String({ maxLength: 60, description: "Short option label" }),
     description: Type.String({ description: "What this option implies" }),

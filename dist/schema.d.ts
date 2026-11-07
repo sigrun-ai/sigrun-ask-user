@@ -6,7 +6,7 @@
  * carry over (spec §7.1); rules a schema cannot express live in
  * `validate.ts`.
  */
-import { Type, type Static } from "@earendil-works/pi-ai";
+import { Type, type Static } from "typebox";
 export declare const AskOptionSchema: Type.TObject<{
     label: Type.TString;
     description: Type.TString;
