@@ -8,7 +8,7 @@
  * has to guess whether to retry or move on.
  */
 
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
 import type { AskParams } from "./schema.js";
 import type { Settled } from "./waiters.js";
 

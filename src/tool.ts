@@ -134,7 +134,7 @@ export function createAskTool(deps: { host: SigrunHost; waiters: Waiters }): Too
 				// SAFETY: AskParams is Static<AskParamsSchema> — plain JSON by
 				// construction (validated against the schema by the harness), but
 				// the typebox interface carries no index signature.
-				details: args as unknown as Record<string, import("@earendil-works/chord").JsonValue>,
+				details: args as unknown as Record<string, import("@earendil-works/chord/json").JsonValue>,
 				body: buildCard(args),
 			},
 			context,
@@ -172,7 +172,7 @@ export function createAskTool(deps: { host: SigrunHost; waiters: Waiters }): Too
 			// SAFETY: AskDetails is built here from schema-typed fields only
 			// (strings/arrays), hence JSON; its interface lacks an index
 			// signature, so it is not structurally a JsonValue.
-			details: result.details as unknown as import("@earendil-works/chord").JsonValue,
+			details: result.details as unknown as import("@earendil-works/chord/json").JsonValue,
 			...(result.isError ? { isError: true as const } : {}),
 		};
 	}

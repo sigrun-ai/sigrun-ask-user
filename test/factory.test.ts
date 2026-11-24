@@ -5,7 +5,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { ConversationId, ToolExecutionApi, ToolExecutionResult } from "@earendil-works/pi-durable";
+import type {
+	ConversationId,
+	ToolExecutionApi,
+	ToolExecutionResult,
+	ToolPark,
+} from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import type { ExtensionLifecyclePayload } from "@sigrun/sigrun/extension";
 import { ASK_KIND } from "../src/card.js";
@@ -31,6 +36,12 @@ const PARAMS = {
 		},
 	],
 };
+
+/** Tests drive a tool that never parks: narrow, asserting no park happened. */
+function asResult(result: ToolExecutionResult | ToolPark): ToolExecutionResult {
+	if ("sleep" in result || "wait" in result) throw new Error("test tool parked unexpectedly");
+	return result;
+}
 
 function textOf(result: ToolExecutionResult): string {
 	if (result.output === undefined) throw new Error("the tool returned no output text");
@@ -127,7 +138,7 @@ describe("createAskUser", () => {
 				// pushes `record.answer.values`), NOT `{ values: {...} }`.
 				answer: { q1: "o1" },
 			});
-			const settled = await executing;
+			const settled = asResult(await executing);
 			expect(settled.isError).toBeUndefined();
 			// The rendered answer proves the values survived the fold: a
 			// wrong event shape would render "Pick: " with no selection.

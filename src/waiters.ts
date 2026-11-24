@@ -17,7 +17,7 @@
 
 import { awaitWithContext } from "@earendil-works/chord/context";
 import type { Context } from "@earendil-works/chord/context";
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
 import type { ExtensionLifecyclePayload } from "@sigrun/sigrun/extension";
 import { ASK_KIND } from "./card.js";
 

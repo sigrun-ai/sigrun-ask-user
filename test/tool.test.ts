@@ -19,6 +19,7 @@ import type {
 	ConversationId,
 	ToolExecutionApi,
 	ToolExecutionResult,
+	ToolPark,
 	ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { ASK_KIND } from "../src/card.js";
@@ -63,6 +64,12 @@ function apiFor(callId = "call-1"): ToolExecutionApi {
 	return { conversationId: CID, callId } as unknown as ToolExecutionApi;
 }
 
+/** Tests drive a tool that never parks: narrow, asserting no park happened. */
+function asResult(result: ToolExecutionResult | ToolPark): ToolExecutionResult {
+	if ("sleep" in result || "wait" in result) throw new Error("test tool parked unexpectedly");
+	return result;
+}
+
 function textOf(result: ToolExecutionResult): string {
 	if (result.output === undefined) throw new Error("the tool returned no output text");
 	return result.output.map((part) => (part.type === "text" ? part.text : "")).join("");
@@ -93,7 +100,7 @@ describe("the happy path", () => {
 				status: "answered",
 				answer: { q1: "o2" },
 			});
-			const result = await pending;
+			const result = asResult(await pending);
 			expect(result.isError).toBeUndefined();
 			expect(textOf(result)).toBe("Stack: Beta");
 			expect(host.calls.some((c) => c.method === "settleInteraction")).toBe(false);
@@ -147,7 +154,7 @@ describe("Review Focus 4: an already-settled snapshot resolves without any settl
 			}),
 		});
 		try {
-			const result = await tool.execute(PARAMS, apiFor(), BACKGROUND_CONTEXT);
+			const result = asResult(await tool.execute(PARAMS, apiFor(), BACKGROUND_CONTEXT));
 			expect(textOf(result)).toBe("Stack: Alpha");
 			expect(host.calls.some((c) => c.method === "settleInteraction")).toBe(false);
 		} finally {
@@ -229,7 +236,7 @@ describe("Review Focus 1: the abort path", () => {
 			await Promise.resolve();
 			await Promise.resolve();
 			abort();
-			const result = await pending;
+			const result = asResult(await pending);
 			expect(textOf(result)).toBe("Stack: Beta");
 			expect(host.calls.some((c) => c.method === "settleInteraction")).toBe(false);
 		} finally {
@@ -242,7 +249,7 @@ describe("a job run asks nobody", () => {
 	it("isJobRun → true returns the job-run error and seeds nothing", async () => {
 		const { host, tool } = await setup({ isJobRun: true });
 		try {
-			const result = await tool.execute(PARAMS, apiFor(), BACKGROUND_CONTEXT);
+			const result = asResult(await tool.execute(PARAMS, apiFor(), BACKGROUND_CONTEXT));
 			expect(result.isError).toBe(true);
 			expect(textOf(result)).toBe(
 				"ask_user_question is not available in scheduled job runs: no one is there to answer. If the escalate tool is available, use it to hand the user the decision instead.",
@@ -269,7 +276,7 @@ describe("validation failures seed nothing", () => {
 					},
 				],
 			};
-			const result = await tool.execute(bad, apiFor(), BACKGROUND_CONTEXT);
+			const result = asResult(await tool.execute(bad, apiFor(), BACKGROUND_CONTEXT));
 			expect(result.isError).toBe(true);
 			expect(textOf(result)).toBe("question 1: option labels must be unique");
 			expect(host.calls.some((c) => c.method === "seedInteraction")).toBe(false);
@@ -345,7 +352,7 @@ describe("Review Focus 5: malformed inputs fail before any seed", () => {
 				if (Value.Check(AskParamsSchema, prepared)) {
 					const invalid = validateAsk(prepared);
 					if (invalid === null) throw new Error("expected the input to be malformed");
-					const result = await tool.execute(prepared, apiFor(), BACKGROUND_CONTEXT);
+					const result = asResult(await tool.execute(prepared, apiFor(), BACKGROUND_CONTEXT));
 					expect(result.isError).toBe(true);
 					expect(textOf(result)).toBe(invalid);
 					expect(textOf(result)).toContain(keyword);
