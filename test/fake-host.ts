@@ -69,6 +69,8 @@ export async function createFakeHost(opts: FakeHostOptions = {}): Promise<FakeHo
 		meta: notUsed(),
 		entries: notUsed(),
 		create: notUsed(),
+		setAutoName: notUsed(),
+		markContext: notUsed(),
 		submit: notUsed(),
 		entry: notUsed(),
 		watch: notUsed(),
@@ -83,6 +85,19 @@ export async function createFakeHost(opts: FakeHostOptions = {}): Promise<FakeHo
 	};
 
 	const host: SigrunHost = {
+		// Declared and embedding providers are outside this fixture's scope;
+		// the fields exist because the host contract carries them.
+		settings: {
+			declare: <S, U>() => ({
+				get: async () => ({}) as S,
+				effective: async () => ({}) as S,
+				user: () => ({ get: async () => ({}) as U }),
+			}),
+		},
+		embeddings: {
+			embed: async () => ({ ok: false as const, code: "not_configured" as const, message: "not used" }),
+			list: async () => [],
+		},
 		stores: {
 			user: (user) => ({
 				secrets: { get: notUsed(), set: notUsed(), delete: notUsed() },
@@ -93,7 +108,7 @@ export async function createFakeHost(opts: FakeHostOptions = {}): Promise<FakeHo
 					cache: join(root, "cache", "users", user),
 				},
 			}),
-			secrets: { get: notUsed(), set: notUsed() },
+			secrets: { get: notUsed(), set: notUsed(), delete: notUsed() },
 			settings: { get: notUsed(), set: notUsed() },
 			paths: {
 				data: join(root, "data"),
@@ -158,7 +173,7 @@ export async function createFakeHost(opts: FakeHostOptions = {}): Promise<FakeHo
 		access: { accessOf: notUsed() },
 		identity: { actingUser: notUsed() },
 		surfaces: { changed: notUsed() },
-		models: { list: notUsed(), complete: notUsed() },
+		models: { list: notUsed(), complete: notUsed(), isLocal: notUsed() },
 		commands: { list: notUsed(), run: notUsed() },
 		curation: new Proxy({} as SigrunHost["curation"], {
 			get: () => {
